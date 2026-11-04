@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "França", email = "feliperomeirofranca@gmail.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "bentoml>=1.4.40",
     "matplotlib>=3.11.2",
@@ -15,6 +15,53 @@ dependencies = [
     "pyyaml>=6.0.3",
     "ultralytics>=8.4.202",
 ]
+
+
+#uv sync --extra cu130 --locked
+#uv sync --extra cpu --locked
+[project.optional-dependencies]
+cpu = [
+    "torch==2.14.1",
+    "torchvision==0.29.1",
+]
+
+cu130 = [
+    "torch==2.14.1",
+    "torchvision==0.29.1",
+]
+
+[tool.uv]
+environments = [
+    "sys_platform == 'win32' and python_version == '3.13'",
+]
+
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "cu130" },
+    ],
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu130", extra = "cu130" },
+]
+
+torchvision = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu130", extra = "cu130" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
 
 [project.scripts]
 license-plate-recognition = "license_plate_recognition:main"
