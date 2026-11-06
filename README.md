@@ -1,5 +1,3 @@
-# license-plate-recognition
-
 # License Plate Recognition — Commands
 
 ## Environment
@@ -72,3 +70,98 @@ uv run --extra cu130 python src/detection/train.py --quick-experiment
 uv run --extra cu130 python src/detection/train.py
 ```
 
+## Detector evaluation
+
+Evaluate the trained detector on the held-out test split:
+
+```powershell
+uv run --extra cu130 python src/detection/evaluate.py
+```
+
+Evaluation results and plots are saved under `runs/detection/yolo26n_test/`.
+
+## BentoML — Register the detector
+
+Register the trained `best.pt` checkpoint in the local BentoML Model Store:
+
+```powershell
+uv run --extra cu130 python src/detection/register_model.py
+```
+
+List registered models and inspect the detector metadata:
+
+```powershell
+uv run --extra cu130 bentoml models list
+uv run --extra cu130 bentoml models get license_plate_detector:latest
+```
+
+## BentoML — Export the model for GitHub
+
+Export the registered model as a `.bentomodel` archive inside the repository:
+
+```powershell
+New-Item -ItemType Directory -Force .\models\bentoml
+uv run --extra cu130 bentoml models export license_plate_detector:latest .\models\bentoml\license_plate_detector.bentomodel
+```
+
+Track the exported model archive in Git:
+
+```powershell
+git add models/bentoml/license_plate_detector.bentomodel
+git commit -m "Add YOLO26n detector model"
+```
+
+The archive contains the registered model and its BentoML metadata. It allows another machine to restore the model without running training again. Do not commit the original dataset or the `runs/` training outputs unless they are intentionally being versioned.
+
+## BentoML — Import the model on another machine
+
+After cloning the repository and installing the project dependencies, import the archive into that machine's local BentoML Model Store:
+
+```powershell
+uv run --extra cu130 bentoml models import .\models\bentoml\license_plate_detector.bentomodel
+uv run --extra cu130 bentoml models list
+```
+
+On the CPU-only laptop, use the CPU extra explicitly:
+
+```powershell
+uv run --extra cpu bentoml models import .\models\bentoml\license_plate_detector.bentomodel
+uv run --extra cpu bentoml models list
+```
+
+**Important:** On a machine restored from GitHub, do not run `register_model.py` again. That script expects the original training checkpoint under `runs/`. Import the committed `.bentomodel` archive instead; no retraining is required.
+
+## BentoML — Run the detection service
+
+Start the service from the project root. Use the CUDA extra on the desktop:
+
+```powershell
+uv run --extra cu130 bentoml serve services.detection_service:LicensePlateDetection
+```
+
+On the CPU-only laptop:
+
+```powershell
+uv run --extra cpu bentoml serve services.detection_service:LicensePlateDetection
+```
+
+The service is normally available at `http://localhost:3000`, with the detection API at `http://localhost:3000/detect`.
+
+## BentoML — Test the detection endpoint
+
+Keep the BentoML server running, open a second terminal, and run:
+
+### Desktop — NVIDIA CUDA
+
+```powershell
+uv run --extra cu130 python src/detection/test_service.py
+```
+
+### Laptop — CPU
+
+```powershell
+uv run --extra cpu python src/detection/test_service.py
+```
+
+
+After testing, stop the BentoML server with `Ctrl+C` in the server terminal.
