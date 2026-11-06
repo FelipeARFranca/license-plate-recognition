@@ -104,13 +104,6 @@ New-Item -ItemType Directory -Force .\models\bentoml
 uv run --extra cu130 bentoml models export license_plate_detector:latest .\models\bentoml\license_plate_detector.bentomodel
 ```
 
-Track the exported model archive in Git:
-
-```powershell
-git add models/bentoml/license_plate_detector.bentomodel
-git commit -m "Add YOLO26n detector model"
-```
-
 The archive contains the registered model and its BentoML metadata. It allows another machine to restore the model without running training again. Do not commit the original dataset or the `runs/` training outputs unless they are intentionally being versioned.
 
 ## BentoML — Import the model on another machine
