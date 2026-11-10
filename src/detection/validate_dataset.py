@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from math import isfinite
 
