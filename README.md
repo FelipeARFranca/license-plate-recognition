@@ -1,76 +1,107 @@
-**# License Plate Recognition — Commands**
+# License Plate Recognition — Commands
 
-**## Environment**
+This README collects the commands used to inspect, train, evaluate, serve, and package the license plate recognition pipeline.
+
+The project has two model components:
+
+- **Detection:** custom-trained YOLO26n model using the Large License Plate Detection Dataset.
+- **OCR:** pretrained Fast-Plate-OCR `cct-s-v2-global-model`, evaluated on the Brazilian License Plate OCR dataset.
+
+The complete BentoML pipeline runs detection, crops each plate with Pillow, recognizes its text, and returns JSON metadata, Base64-encoded plate crops, and an annotated original image.
+
+---
+
+## Environment
+
+Pin the project Python version and update the lockfile:
 
 ```powershell
 uv python pin 3.13
 uv lock
 ```
 
-**### Desktop — NVIDIA CUDA**
+### Desktop — NVIDIA CUDA
 
 ```powershell
 uv sync --extra cu130 --locked
 ```
 
-**### Laptop — CPU**
+### Laptop — CPU
 
 ```powershell
 uv sync --extra cpu --locked
 ```
 
-**## Dependencies**
+After changing dependencies with `uv add`, commit both `pyproject.toml` and `uv.lock`.
+
+## Dependencies
+
+Add the project dependencies:
 
 ```powershell
-uv add ultralytics opencv-python bentoml pyyaml matplotlib tqdm pandas
+uv add ultralytics opencv-python bentoml pyyaml matplotlib tqdm pandas pillow
+uv add "fast-plate-ocr[onnx]"
 ```
 
-**## PyTorch / CUDA verification**
+`fast-plate-ocr[onnx]` installs Fast-Plate-OCR and its ONNX Runtime inference extra.
+
+## PyTorch / CUDA verification
 
 ```powershell
-uv run --extra cu130 python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+uv run --extra cu130 python -c "import torch, torchvision; print('torch:', torch.__version__); print('torchvision:', torchvision.__version__); print('CUDA available:', torch.cuda.is_available()); print('CUDA version:', torch.version.cuda); print('Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
 
-**## GPU monitoring**
+The desktop Bento build configuration currently pins:
+
+- `torch==2.14.1+cu130`
+- `torchvision==0.29.1+cu130`
+
+If the installed project versions change, update the corresponding pins in `bentofile.yaml` before rebuilding the Bento.
+
+## GPU monitoring
 
 ```powershell
 nvidia-smi -l 1
 ```
 
-**## Dataset inspection and validation**
+---
+
+# Detection — YOLO26n
+
+## Dataset inspection and validation
 
 ```powershell
 uv run --extra cu130 python src/detection/inspect_dataset.py
 uv run --extra cu130 python src/detection/validate_dataset.py
 ```
 
-**## Annotation preview**
+## Annotation preview
 
 ```powershell
 uv run --extra cu130 python src/detection/preview_annotations.py
 ```
 
-**## YOLO training**
+## YOLO training
 
-**### Smoke test**
+### Smoke test
 
 ```powershell
 uv run --extra cu130 python src/detection/train.py --smoke-test
 ```
 
-**### Quick experiment**
+### Quick experiment
 
 ```powershell
 uv run --extra cu130 python src/detection/train.py --quick-experiment
 ```
 
-**### Full training**
+### Full training
 
 ```powershell
 uv run --extra cu130 python src/detection/train.py
 ```
 
-**## Detector evaluation**
+## Detector evaluation
 
 Evaluate the trained detector on the held-out test split:
 
@@ -80,7 +111,7 @@ uv run --extra cu130 python src/detection/evaluate.py
 
 Evaluation results and plots are saved under `runs/detection/yolo26n_test/`.
 
-**## BentoML — Register the detector**
+## Register the detector in BentoML
 
 Register the trained `best.pt` checkpoint in the local BentoML Model Store:
 
@@ -88,94 +119,365 @@ Register the trained `best.pt` checkpoint in the local BentoML Model Store:
 uv run --extra cu130 python src/detection/register_model.py
 ```
 
-List registered models and inspect the detector metadata:
+List registered models and inspect detector metadata:
 
 ```powershell
 uv run --extra cu130 bentoml models list
 uv run --extra cu130 bentoml models get license_plate_detector:latest
 ```
 
-**## BentoML — Export the model for GitHub**
+---
 
-Export the registered model as a `.bentomodel` archive inside the repository:
+# OCR — Fast-Plate-OCR
+
+The OCR component uses the pretrained `cct-s-v2-global-model`. The project does not train CRNN or LPRNet. The Brazilian dataset is used for evaluation, not fine-tuning.
+
+## Run OCR on one cropped plate
+
+```powershell
+uv run --extra cu130 python src/ocr/predict.py --image "datasets/ocr/plates/plates_imgs/plate_0.png"
+```
+
+The script defaults to CPU ONNX Runtime inference. To select a device explicitly:
+
+```powershell
+uv run --extra cu130 python src/ocr/predict.py --image "path\to\plate.png" --device cpu
+```
+
+## Evaluate the Brazilian OCR dataset
+
+Expected dataset layout:
+
+```text
+datasets/
+└── ocr/
+    └── plates/
+        ├── plates.csv
+        └── plates_imgs/
+            ├── plate_0.png
+            ├── plate_1.png
+            └── ...
+```
+
+The CSV must contain `filename` and `plate` columns. The evaluation script resolves image references by filename and, if needed, by filename stem to tolerate path or extension differences.
+
+Run a small smoke test first:
+
+```powershell
+uv run --extra cu130 python src/ocr/evaluate.py --limit 10
+```
+
+Run the complete evaluation:
+
+```powershell
+uv run --extra cu130 python src/ocr/evaluate.py
+```
+
+The evaluation defaults to `cct-s-v2-global-model` and CPU inference. To choose a device explicitly:
+
+```powershell
+uv run --extra cu130 python src/ocr/evaluate.py --device cpu
+```
+
+Results are saved under `runs/ocr/evaluation/`:
+
+- `brazilian_plates_predictions.csv`
+- `brazilian_plates_summary.json`
+
+The current recorded baseline on 206 images is:
+
+| Metric | Result |
+|---|---:|
+| Exact plate accuracy | 94.17% (194/206) |
+| Character Error Rate | 1.46% |
+| Mean inference time | 25.46 ms |
+| Median inference time | 22.91 ms |
+| P95 inference time | 38.95 ms |
+
+These are the results from the evaluated dataset and CPU inference configuration; they are not a guarantee of performance on other data.
+
+## Register the pretrained OCR model in BentoML
+
+This downloads or retrieves the pretrained model and registers its ONNX file and matching `plate_config.yaml` in the local BentoML Model Store. It does not train or fine-tune the model.
+
+```powershell
+uv run --extra cu130 python src/ocr/register_model.py
+```
+
+Inspect the registered OCR model:
+
+```powershell
+uv run --extra cu130 bentoml models list
+uv run --extra cu130 bentoml models get license_plate_ocr:latest
+```
+
+---
+
+# BentoML — Export individual models
+
+The `.bentomodel` archives contain individual registered model artifacts and BentoML metadata. They are useful for restoring the models into another machine's local Model Store.
+
+Create the destination directory:
 
 ```powershell
 New-Item -ItemType Directory -Force .\models\bentoml
+```
+
+## Export the detector
+
+```powershell
 uv run --extra cu130 bentoml models export license_plate_detector:latest .\models\bentoml\license_plate_detector.bentomodel
 ```
 
-The archive contains the registered model and its BentoML metadata. It allows another machine to restore the model without running training again. Do not commit the original dataset or the `runs/` training outputs unless they are intentionally being versioned.
+## Export the OCR model
 
-**## BentoML — Import the model on another machine**
+```powershell
+uv run --extra cu130 bentoml models export license_plate_ocr:latest .\models\bentoml\license_plate_ocr.bentomodel
+```
 
-After cloning the repository and installing the project dependencies, import the archive into that machine's local BentoML Model Store:
+## Import individual models on another machine
+
+After cloning the repository and installing the project dependencies, restore both model archives into that machine's local BentoML Model Store.
+
+### Desktop — NVIDIA CUDA
 
 ```powershell
 uv run --extra cu130 bentoml models import .\models\bentoml\license_plate_detector.bentomodel
+uv run --extra cu130 bentoml models import .\models\bentoml\license_plate_ocr.bentomodel
 uv run --extra cu130 bentoml models list
 ```
 
-On the CPU-only laptop, use the CPU extra explicitly:
+### Laptop — CPU
 
 ```powershell
 uv run --extra cpu bentoml models import .\models\bentoml\license_plate_detector.bentomodel
+uv run --extra cpu bentoml models import .\models\bentoml\license_plate_ocr.bentomodel
 uv run --extra cpu bentoml models list
 ```
 
-**\*\*Important:\*\*** On a machine restored from GitHub, do not run `register_model.py` again. That script expects the original training checkpoint under `runs/`. Import the committed `.bentomodel` archive instead; no retraining is required.
+**Important:** On a machine restored from GitHub, do not rerun the detector registration script if the training checkpoint under `runs/` is unavailable. Import the committed `.bentomodel` archive instead. The OCR registration script can download the pretrained model, but importing its committed archive avoids downloading it again.
 
-**## BentoML — Run the detection service**
+---
 
-Start the service from the project root. Use the CUDA extra on the desktop:
+# BentoML — Run individual services
+
+## Detection service
+
+Start the service from the project root.
+
+### Desktop — NVIDIA CUDA
 
 ```powershell
 uv run --extra cu130 bentoml serve services.detection_service:LicensePlateDetection
 ```
 
-On the CPU-only laptop:
+### Laptop — CPU
 
 ```powershell
 uv run --extra cpu bentoml serve services.detection_service:LicensePlateDetection
 ```
 
-The service is normally available at `[http://localhost:3000](http://localhost:3000)`, with the detection API at `[http://localhost:3000/detect](http://localhost:3000/detect)`.
+The detection API is normally available at:
 
-**## BentoML — Test the detection endpoint**
-
-Keep the BentoML server running, open a second terminal, and run:
-
-**### Desktop — NVIDIA CUDA**
-
-```powershell
-uv run --extra cu130 python src/detection/test_service.py
+```text
+http://localhost:3000/detect
 ```
 
-**### Laptop — CPU**
+## OCR service
+
+### Desktop — NVIDIA CUDA project environment
 
 ```powershell
-uv run --extra cpu python src/detection/test_service.py
-```
-
-After testing, stop the BentoML server with `Ctrl+C` in the server terminal.
-
-**## BentoML — OCR model commands**
-
-```powershell
-uv run --extra cu130 python src/ocr/register_model.py
-
-uv run --extra cu130 bentoml models list
-
-uv run --extra cu130 bentoml models get license_plate_ocr:latest
-
 uv run --extra cu130 bentoml serve services.ocr_service:LicensePlateOCR
+```
 
-New-Item -ItemType Directory -Force .\models\bentoml\
+### Laptop — CPU
 
-uv run --extra cu130 bentoml models export license_plate_ocr:latest .\models\bentoml\license_plate_ocr.bentomodel
-
-uv run --extra cpu bentoml models import .\models\bentoml\license_plate_ocr.bentomodel
-
-uv run --extra cpu bentoml models list
-
+```powershell
 uv run --extra cpu bentoml serve services.ocr_service:LicensePlateOCR
 ```
+
+Stop an individual BentoML server with `Ctrl+C` in its server terminal.
+
+---
+
+# Complete pipeline
+
+The pipeline service composes the detector and OCR services. It receives an original vehicle image, detects plates, crops each detection with Pillow, recognizes each crop, and returns:
+
+- Detection bounding boxes and confidence values.
+- OCR plate text and optional character confidence values.
+- Each cropped plate as a Base64-encoded PNG.
+- The annotated original image as a Base64-encoded PNG.
+- Per-stage and total processing timings.
+
+## Run the source pipeline service
+
+### Desktop — NVIDIA CUDA
+
+```powershell
+uv run --extra cu130 bentoml serve services.pipeline_service:LicensePlatePipeline
+```
+
+### Laptop — CPU
+
+```powershell
+uv run --extra cpu bentoml serve services.pipeline_service:LicensePlatePipeline
+```
+
+The complete pipeline endpoint is normally available at:
+
+```text
+http://localhost:3000/recognize
+```
+
+Stop the server with `Ctrl+C`.
+
+---
+
+# BentoML — Package the complete pipeline
+
+The repository root contains:
+
+- `bentofile.yaml` — defines the Pipeline Service, both registered models, runtime packages, and Docker environment.
+- `.bentoignore` — excludes datasets, training runs, local model archives, and development files from the Bento build.
+
+The current `bentofile.yaml` pins the Linux Bento runtime to `torch==2.14.1+cu130` and `torchvision==0.29.1+cu130`, using the official CUDA 13.0 PyTorch wheel index.
+
+## Verify both registered models
+
+```powershell
+uv run --extra cu130 bentoml models list
+```
+
+The Model Store must contain:
+
+```text
+license_plate_detector:latest
+license_plate_ocr:latest
+```
+
+## Build the Bento
+
+Run from the repository root:
+
+```powershell
+uv run --extra cu130 bentoml build
+```
+
+List built Bentos:
+
+```powershell
+uv run --extra cu130 bentoml list
+```
+
+Inspect the latest complete pipeline Bento:
+
+```powershell
+uv run --extra cu130 bentoml get license_plate_pipeline:latest
+```
+
+## Test the built Bento
+
+```powershell
+uv run --extra cu130 bentoml serve license_plate_pipeline:latest
+```
+
+This tests the packaged Bento rather than loading the service directly from source.
+
+## Containerize the Bento with Docker
+
+Docker Desktop must be running and configured for Linux containers before containerization.
+
+Verify that the Docker client can reach its engine:
+
+```powershell
+docker version
+docker context ls
+```
+
+`docker version` must display both Client and Server sections.
+
+Build the container image:
+
+```powershell
+uv run --extra cpu bentoml containerize license_plate_pipeline:latest
+```
+
+The `--extra cpu` here selects the local `uv` environment used to run the BentoML CLI. It does **not** change the dependencies already locked inside the Bento; those are defined by `bentofile.yaml`.
+
+Inspect the generated image:
+
+```powershell
+docker images
+```
+
+Run the image locally, replacing `YOUR_BENTO_VERSION` with the tag shown by Docker:
+
+```powershell
+docker run --rm -p 3000:3000 license_plate_pipeline:YOUR_BENTO_VERSION serve
+```
+
+The API is then available at:
+
+```text
+http://localhost:3000/recognize
+```
+
+### Docker troubleshooting
+
+If containerization reports that the Docker backend is not healthy:
+
+1. Start Docker Desktop and wait until its engine is running.
+2. Ensure Docker Desktop is using Linux containers.
+3. Run `docker version` and check that the Server section is present.
+4. If the WSL backend is unresponsive, save work in WSL and run:
+
+```powershell
+wsl --shutdown
+```
+
+Then reopen Docker Desktop and wait for the engine to start.
+
+The first container build can take time because it downloads the base image and installs the locked runtime dependencies.
+
+**Runtime note:** the current Bento configuration packages CUDA 13.0 PyTorch wheels. The local `--extra cpu` flag used to launch `bentoml containerize` does not create a CPU-only image. For a CPU-only deployment image, create a separate Bento configuration with CPU-specific Torch/TorchVision dependencies and build a separate Bento.
+
+## Export the complete Bento archive
+
+A `.bento` archive is different from an individual `.bentomodel`: it packages the complete application, including source code, locked dependencies, configuration, and referenced model artifacts.
+
+```powershell
+New-Item -ItemType Directory -Force .\models\bentoml
+uv run --extra cu130 bentoml export license_plate_pipeline:latest .\models\bentoml\license_plate_pipeline.bento
+```
+
+Import the complete Bento on another machine:
+
+```powershell
+uv run --extra cpu bentoml import .\models\bentoml\license_plate_pipeline.bento
+```
+
+List and serve the imported Bento:
+
+```powershell
+uv run --extra cpu bentoml list
+uv run --extra cpu bentoml serve license_plate_pipeline:latest
+```
+
+The `.bento` archive is an alternative to deploying the Docker image. You do not need to export both unless you want both distribution formats.
+
+---
+
+## Useful references
+
+- [BentoML — Packaging for deployment](https://docs.bentoml.com/en/latest/get-started/packaging-for-deployment.html)
+- [BentoML — Bento build options](https://docs.bentoml.com/en/latest/reference/bentoml/bento-build-options.html)
+- [BentoML — CLI reference](https://docs.bentoml.com/en/latest/reference/bentoml/cli.html)
+- [BentoML — Model loading and management](https://docs.bentoml.com/en/latest/build-with-bentoml/model-loading-and-management.html)
+- [Fast-Plate-OCR documentation](https://ankandrew.github.io/fast-plate-ocr/latest/)
+
+## Datasets
+
+- [Large-License-Plate-Detection-Dataset](https://www.kaggle.com/datasets/fareselmenshawii/large-license-plate-dataset)
+- [Brazilian license plate OCR](https://www.kaggle.com/datasets/luisasr2/brazilian-license-plate-ocr)

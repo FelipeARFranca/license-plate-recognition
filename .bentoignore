@@ -1,0 +1,26 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Git and editor metadata
+.git/
+.vscode/
+.idea/
+
+# Datasets and training/evaluation artifacts
+datasets/
+runs/
+mlruns/
+mlflow.db
+notebooks/
+tests/
+
+# Model archives are imported into the BentoML Model Store separately.
+# The Bento build uses the model tags declared in bentofile.yaml.
+models/
