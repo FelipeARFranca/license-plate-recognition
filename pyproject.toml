@@ -1,7 +1,7 @@
 [project]
 name = "license-plate-recognition"
 version = "0.1.0"
-description = "Add your description here"
+description = "License plate detection (YOLO26n) and recognition (Fast-Plate-OCR) pipeline served with BentoML."
 readme = "README.md"
 authors = [
     { name = "França", email = "feliperomeirofranca@gmail.com" }
@@ -18,9 +18,9 @@ dependencies = [
     "ultralytics>=8.4.202",
 ]
 
-
-#uv sync --extra cu130 --locked
-#uv sync --extra cpu --locked
+# Select exactly one device extra:
+#   uv sync --extra cu130 --locked   (NVIDIA CUDA 13.0)
+#   uv sync --extra cpu --locked     (CPU only)
 [project.optional-dependencies]
 cpu = [
     "torch==2.14.1",
@@ -66,7 +66,7 @@ url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [project.scripts]
-license-plate-recognition = "license_plate_recognition:main"
+license-plate-recognition = "license_plate_recognition.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.17,<0.13.0"]

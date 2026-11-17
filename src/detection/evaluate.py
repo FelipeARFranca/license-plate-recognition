@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import torch
 from ultralytics import YOLO
 
 
@@ -16,6 +17,9 @@ MODEL_PATH = (
 
 DATA_YAML = PROJECT_ROOT / "configs" / "detection.yaml"
 
+# Use the GPU on the CUDA environment and fall back to CPU otherwise.
+DEVICE = 0 if torch.cuda.is_available() else "cpu"
+
 
 def main():
     if not MODEL_PATH.exists():
@@ -25,6 +29,7 @@ def main():
         raise FileNotFoundError(f"Dataset configuration not found: {DATA_YAML}")
 
     print(f"Loading model: {MODEL_PATH}")
+    print(f"Device: {DEVICE}")
 
     model = YOLO(str(MODEL_PATH))
 
@@ -35,7 +40,7 @@ def main():
         split="test",
         imgsz=640,
         batch=16,
-        device=0,
+        device=DEVICE,
         workers=4,
         plots=True,
         project=str(PROJECT_ROOT / "runs" / "detection"),

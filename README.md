@@ -51,12 +51,14 @@ uv add "fast-plate-ocr[onnx]"
 uv run --extra cu130 python -c "import torch, torchvision; print('torch:', torch.__version__); print('torchvision:', torchvision.__version__); print('CUDA available:', torch.cuda.is_available()); print('CUDA version:', torch.version.cuda); print('Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
 
-The desktop Bento build configuration currently pins:
+The Bento build configurations pin the same Torch versions as the project, one per device:
 
-- `torch==2.14.1+cu130`
-- `torchvision==0.29.1+cu130`
+| Bento config | Torch | TorchVision |
+|---|---|---|
+| `bentofile.cu130.yaml` | `torch==2.14.1+cu130` | `torchvision==0.29.1+cu130` |
+| `bentofile.cpu.yaml` | `torch==2.14.1+cpu` | `torchvision==0.29.1+cpu` |
 
-If the installed project versions change, update the corresponding pins in `bentofile.yaml` before rebuilding the Bento.
+If the installed project versions change, update the corresponding pins in both bentofiles before rebuilding the Bentos.
 
 ## GPU monitoring
 
@@ -103,10 +105,18 @@ uv run --extra cu130 python src/detection/train.py
 
 ## Detector evaluation
 
-Evaluate the trained detector on the held-out test split:
+Evaluate the trained detector on the held-out test split. The script uses the GPU when CUDA is available and falls back to CPU otherwise.
+
+### Desktop — NVIDIA CUDA
 
 ```powershell
 uv run --extra cu130 python src/detection/evaluate.py
+```
+
+### Laptop — CPU
+
+```powershell
+uv run --extra cpu python src/detection/evaluate.py
 ```
 
 Evaluation results and plots are saved under `runs/detection/yolo26n_test/`.
@@ -135,7 +145,7 @@ The OCR component uses the pretrained `cct-s-v2-global-model`. The project does 
 ## Run OCR on one cropped plate
 
 ```powershell
-uv run --extra cu130 python src/ocr/predict.py --image "datasets/ocr/plates/plates_imgs/plate_0.png"
+uv run --extra cu130 python src/ocr/predict.py --image "datasets/ocr/plates/plate_imgs/plate_0.png"
 ```
 
 The script defaults to CPU ONNX Runtime inference. To select a device explicitly:
@@ -153,7 +163,7 @@ datasets/
 └── ocr/
     └── plates/
         ├── plates.csv
-        └── plates_imgs/
+        └── plate_imgs/
             ├── plate_0.png
             ├── plate_1.png
             └── ...
@@ -333,16 +343,43 @@ http://localhost:3000/recognize
 
 Stop the server with `Ctrl+C`.
 
+## Command-line client
+
+With any pipeline server running (source service, built Bento, or Docker container), send an image from a second terminal:
+
+```powershell
+uv run --extra cpu license-plate-recognition "path\to\vehicle.jpg"
+```
+
+The client calls `/recognize`, prints each detected plate, and saves `annotated.png`, one `plate_<id>.png` per crop, and `result.json` (the response with Base64 data replaced by file paths) under `runs/pipeline/<image name>/`.
+
+Useful options:
+
+```powershell
+uv run --extra cpu license-plate-recognition "path\to\vehicle.jpg" `
+    --url http://localhost:3000 `
+    --confidence-threshold 0.4 `
+    --iou-threshold 0.7 `
+    --output-dir runs\pipeline\my_test `
+    --no-ocr-confidence
+```
+
+The client only sends HTTP requests, so the `--extra` choice here does not affect where inference runs.
+
 ---
 
 # BentoML — Package the complete pipeline
 
-The repository root contains:
+The pipeline is packaged per device, mirroring the `cu130` / `cpu` project extras. Pick the configuration that matches the machine that will **run** the Bento or container:
 
-- `bentofile.yaml` — defines the Pipeline Service, both registered models, runtime packages, and Docker environment.
-- `.bentoignore` — excludes datasets, training runs, local model archives, and development files from the Bento build.
+| Device | Build config | Bento name | Torch wheels |
+|---|---|---|---|
+| NVIDIA CUDA 13.0 | `bentofile.cu130.yaml` | `license_plate_pipeline_cu130` | `torch==2.14.1+cu130`, `torchvision==0.29.1+cu130` |
+| CPU only | `bentofile.cpu.yaml` | `license_plate_pipeline_cpu` | `torch==2.14.1+cpu`, `torchvision==0.29.1+cpu` |
 
-The current `bentofile.yaml` pins the Linux Bento runtime to `torch==2.14.1+cu130` and `torchvision==0.29.1+cu130`, using the official CUDA 13.0 PyTorch wheel index.
+Both configurations define the same Pipeline Service, both registered models, and the same Docker environment. They differ only in the Torch/TorchVision builds, which are fetched from the matching official PyTorch wheel pages; every other package comes from PyPI. Separate Bento names keep `:latest` unambiguous when both are built on one machine.
+
+`.bentoignore` excludes datasets, training runs, local model archives, and development files from both builds.
 
 ## Verify both registered models
 
@@ -359,31 +396,48 @@ license_plate_ocr:latest
 
 ## Build the Bento
 
-Run from the repository root:
+Run from the repository root.
+
+### Desktop — NVIDIA CUDA
 
 ```powershell
-uv run --extra cu130 bentoml build
+uv run --extra cu130 bentoml build -f bentofile.cu130.yaml
+```
+
+### Laptop — CPU
+
+```powershell
+uv run --extra cpu bentoml build -f bentofile.cpu.yaml
 ```
 
 List built Bentos:
 
 ```powershell
-uv run --extra cu130 bentoml list
+uv run --extra cpu bentoml list
 ```
 
 Inspect the latest complete pipeline Bento:
 
 ```powershell
-uv run --extra cu130 bentoml get license_plate_pipeline:latest
+uv run --extra cu130 bentoml get license_plate_pipeline_cu130:latest
+uv run --extra cpu bentoml get license_plate_pipeline_cpu:latest
 ```
 
 ## Test the built Bento
 
+### Desktop — NVIDIA CUDA
+
 ```powershell
-uv run --extra cu130 bentoml serve license_plate_pipeline:latest
+uv run --extra cu130 bentoml serve license_plate_pipeline_cu130:latest
 ```
 
-This tests the packaged Bento rather than loading the service directly from source.
+### Laptop — CPU
+
+```powershell
+uv run --extra cpu bentoml serve license_plate_pipeline_cpu:latest
+```
+
+This tests the packaged Bento rather than loading the service directly from source. Locally, `bentoml serve` runs the Bento with the current `uv` environment, so the `--extra` must match the device.
 
 ## Containerize the Bento with Docker
 
@@ -398,13 +452,21 @@ docker context ls
 
 `docker version` must display both Client and Server sections.
 
-Build the container image:
+Build the container image from the Bento for the target device.
+
+### Desktop — NVIDIA CUDA
 
 ```powershell
-uv run --extra cpu bentoml containerize license_plate_pipeline:latest
+uv run --extra cu130 bentoml containerize license_plate_pipeline_cu130:latest
 ```
 
-The `--extra cpu` here selects the local `uv` environment used to run the BentoML CLI. It does **not** change the dependencies already locked inside the Bento; those are defined by `bentofile.yaml`.
+### Laptop — CPU
+
+```powershell
+uv run --extra cpu bentoml containerize license_plate_pipeline_cpu:latest
+```
+
+The image's dependencies are the ones locked inside the Bento, so the **Bento name** decides whether the image is CUDA or CPU. The `--extra` only selects the local environment that runs the BentoML CLI.
 
 Inspect the generated image:
 
@@ -412,10 +474,22 @@ Inspect the generated image:
 docker images
 ```
 
-Run the image locally, replacing `YOUR_BENTO_VERSION` with the tag shown by Docker:
+Run the image locally, replacing `YOUR_BENTO_VERSION` with the tag shown by Docker.
+
+### Desktop — NVIDIA CUDA
+
+The host needs an NVIDIA driver and GPU support in Docker (Docker Desktop with the WSL 2 backend provides it on Windows). The CUDA runtime itself ships inside the PyTorch wheels.
 
 ```powershell
-docker run --rm -p 3000:3000 license_plate_pipeline:YOUR_BENTO_VERSION serve
+docker run --rm --gpus all -p 3000:3000 license_plate_pipeline_cu130:YOUR_BENTO_VERSION serve
+```
+
+Without `--gpus all`, the CUDA image still starts but the detector falls back to CPU.
+
+### Laptop — CPU
+
+```powershell
+docker run --rm -p 3000:3000 license_plate_pipeline_cpu:YOUR_BENTO_VERSION serve
 ```
 
 The API is then available at:
@@ -439,9 +513,7 @@ wsl --shutdown
 
 Then reopen Docker Desktop and wait for the engine to start.
 
-The first container build can take time because it downloads the base image and installs the locked runtime dependencies.
-
-**Runtime note:** the current Bento configuration packages CUDA 13.0 PyTorch wheels. The local `--extra cpu` flag used to launch `bentoml containerize` does not create a CPU-only image. For a CPU-only deployment image, create a separate Bento configuration with CPU-specific Torch/TorchVision dependencies and build a separate Bento.
+The first container build can take time because it downloads the base image and installs the locked runtime dependencies. The CUDA image is considerably larger than the CPU image because of the bundled CUDA libraries.
 
 ## Export the complete Bento archive
 
@@ -449,20 +521,36 @@ A `.bento` archive is different from an individual `.bentomodel`: it packages th
 
 ```powershell
 New-Item -ItemType Directory -Force .\models\bentoml
-uv run --extra cu130 bentoml export license_plate_pipeline:latest .\models\bentoml\license_plate_pipeline.bento
 ```
 
-Import the complete Bento on another machine:
+### Desktop — NVIDIA CUDA
 
 ```powershell
-uv run --extra cpu bentoml import .\models\bentoml\license_plate_pipeline.bento
+uv run --extra cu130 bentoml export license_plate_pipeline_cu130:latest .\models\bentoml\license_plate_pipeline_cu130.bento
 ```
 
-List and serve the imported Bento:
+### Laptop — CPU
 
 ```powershell
+uv run --extra cpu bentoml export license_plate_pipeline_cpu:latest .\models\bentoml\license_plate_pipeline_cpu.bento
+```
+
+Import, list, and serve the complete Bento on another machine.
+
+### Desktop — NVIDIA CUDA
+
+```powershell
+uv run --extra cu130 bentoml import .\models\bentoml\license_plate_pipeline_cu130.bento
+uv run --extra cu130 bentoml list
+uv run --extra cu130 bentoml serve license_plate_pipeline_cu130:latest
+```
+
+### Laptop — CPU
+
+```powershell
+uv run --extra cpu bentoml import .\models\bentoml\license_plate_pipeline_cpu.bento
 uv run --extra cpu bentoml list
-uv run --extra cpu bentoml serve license_plate_pipeline:latest
+uv run --extra cpu bentoml serve license_plate_pipeline_cpu:latest
 ```
 
 The `.bento` archive is an alternative to deploying the Docker image. You do not need to export both unless you want both distribution formats.

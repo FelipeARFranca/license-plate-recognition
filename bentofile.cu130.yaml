@@ -1,0 +1,49 @@
+service: "services.pipeline_service:LicensePlatePipeline"
+name: "license_plate_pipeline_cu130"
+
+description: |
+  Full license plate recognition pipeline — NVIDIA CUDA 13.0 build.
+  YOLO26n detects plates, Pillow crops them, and Fast-Plate-OCR CCT-S-v2
+  recognizes the plate text. The API returns metadata, crops, and an
+  annotated original image. The detector runs on the GPU when one is
+  exposed to the container and falls back to CPU otherwise.
+
+labels:
+  project: "license-plate-recognition"
+  component: "complete-pipeline"
+  stage: "deployment"
+  device: "cu130"
+
+models:
+  - "license_plate_detector:latest"
+  - "license_plate_ocr:latest"
+
+include:
+  - "services/"
+
+python:
+  packages:
+    - "numpy"
+    - "Pillow"
+    - "torch==2.14.1+cu130"
+    - "torchvision==0.29.1+cu130"
+    - "ultralytics"
+    - "fast-plate-ocr[onnx]"
+    - "onnxruntime"
+  # Per-package PyTorch pages are used instead of extra_index_url so that only
+  # torch/torchvision come from PyTorch; uv's first-index strategy would
+  # otherwise pull outdated common packages (e.g. certifi) from the PyTorch index.
+  find_links:
+    - "https://download.pytorch.org/whl/cu130/torch/"
+    - "https://download.pytorch.org/whl/cu130/torchvision/"
+  lock_packages: true
+
+docker:
+  distro: debian
+  python_version: "3.13"
+  system_packages:
+    - libgl1
+    - libglib2.0-0
+    - libsm6
+    - libxext6
+    - libxrender1

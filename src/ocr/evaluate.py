@@ -201,7 +201,7 @@ def main() -> int:
     resolved_rows = [r for r in rows if r["image_path"] is not None]
     unresolved_rows = [r for r in rows if r["image_path"] is None]
 
-    print("\\nDATASET PREFLIGHT")
+    print("\nDATASET PREFLIGHT")
     print("-" * 76)
     print(f"CSV rows:          {len(rows)}")
     print(f"Resolved images:   {len(resolved_rows)}")
@@ -215,7 +215,7 @@ def main() -> int:
         return 2
 
     if unresolved_rows:
-        print("\\nUnresolved examples:")
+        print("\nUnresolved examples:")
         for row in unresolved_rows[:10]:
             print(f"  row {row['csv_row']}: {row['filename']!r} ({row['resolution']})")
 
@@ -226,7 +226,7 @@ def main() -> int:
               file=sys.stderr)
         raise exc
 
-    print("\\nLoading recognizer...")
+    print("\nLoading recognizer...")
     load_start = time.perf_counter()
     try:
         recognizer = LicensePlateRecognizer(args.model, device=args.device)
@@ -247,7 +247,7 @@ def main() -> int:
             print(f"ERROR during warm-up: {exc}", file=sys.stderr)
             return 4
 
-    print("\\nRunning inference...")
+    print("\nRunning inference...")
     results = []
     latencies_ms = []
     edit_total = 0
@@ -360,7 +360,7 @@ def main() -> int:
     with summary_json.open("w", encoding="utf-8") as file:
         json.dump(summary, file, indent=2, ensure_ascii=False)
 
-    print("\\n" + "=" * 76)
+    print("\n" + "=" * 76)
     print("EVALUATION SUMMARY")
     print("=" * 76)
     print(f"CSV rows:                 {len(rows)}")
@@ -377,11 +377,11 @@ def main() -> int:
         print(f"Median inference time:    {statistics.median(latencies_ms):.2f} ms")
         print(f"P95 inference time:       {percentile(latencies_ms, 0.95):.2f} ms")
         print(f"Total inference time:     {total_inference_seconds:.2f} s")
-    print(f"\\nPredictions: {results_csv}")
+    print(f"\nPredictions: {results_csv}")
     print(f"Summary:     {summary_json}")
 
     if unresolved_rows or inference_errors:
-        print("\\nWARNING: Some samples were not evaluated. Review the CSV before "
+        print("\nWARNING: Some samples were not evaluated. Review the CSV before "
               "interpreting accuracy.")
     return 0
 

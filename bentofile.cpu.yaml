@@ -1,7 +1,8 @@
 service: "services.pipeline_service:LicensePlatePipeline"
+name: "license_plate_pipeline_cpu"
 
 description: |
-  Full license plate recognition pipeline.
+  Full license plate recognition pipeline — CPU-only build.
   YOLO26n detects plates, Pillow crops them, and Fast-Plate-OCR CCT-S-v2
   recognizes the plate text. The API returns metadata, crops, and an
   annotated original image.
@@ -10,6 +11,7 @@ labels:
   project: "license-plate-recognition"
   component: "complete-pipeline"
   stage: "deployment"
+  device: "cpu"
 
 models:
   - "license_plate_detector:latest"
@@ -22,11 +24,17 @@ python:
   packages:
     - "numpy"
     - "Pillow"
-    - "torch==2.14.1"
-    - "torchvision==0.29.1"
+    - "torch==2.14.1+cpu"
+    - "torchvision==0.29.1+cpu"
     - "ultralytics"
     - "fast-plate-ocr[onnx]"
     - "onnxruntime"
+  # Per-package PyTorch pages are used instead of extra_index_url so that only
+  # torch/torchvision come from PyTorch; uv's first-index strategy would
+  # otherwise pull outdated common packages (e.g. certifi) from the PyTorch index.
+  find_links:
+    - "https://download.pytorch.org/whl/cpu/torch/"
+    - "https://download.pytorch.org/whl/cpu/torchvision/"
   lock_packages: true
 
 docker:

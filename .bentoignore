@@ -22,5 +22,5 @@ notebooks/
 tests/
 
 # Model archives are imported into the BentoML Model Store separately.
-# The Bento build uses the model tags declared in bentofile.yaml.
+# The Bento build uses the model tags declared in bentofile.cu130.yaml / bentofile.cpu.yaml.
 models/
