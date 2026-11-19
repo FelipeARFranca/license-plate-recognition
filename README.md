@@ -449,7 +449,7 @@ uv run --extra cu130 python src/ocr/predict.py --image "path\to\plate.png" --dev
 
 ### Evaluate the Brazilian OCR dataset
 
-Download the [Brazilian license plate OCR](https://www.kaggle.com/datasets/luisasr2/brazilian-license-plate-ocr) dataset and place it under `datasets/ocr/plates/`, the default dataset root used by `src/ocr/evaluate.py` (change it with `--root`, `--csv`, and `--image-dir`). The dataset is used only to test the pretrained OCR model, not to train it.
+Download the [Brazilian license plate OCR](https://www.kaggle.com/datasets/luisasr2/brazilian-license-plate-ocr) dataset and place it under `datasets/ocr/`, the default dataset root used by `src/ocr/evaluate.py` (change it with `--root`, `--csv`, and `--image-dir`). The dataset is used only to test the pretrained OCR model, not to train it.
 
 Expected dataset layout:
 
