@@ -16,7 +16,7 @@ End-to-end license plate recognition served as an HTTP API. A custom-trained **Y
 - [Project structure](#project-structure)
 - [Development guide](#development-guide)
   - [Environment](#environment)
-  - [Detection — YOLO26n](#detection--yolo26n)
+  - [Detection — YOLO26n](#detection--yolo26n) ([dataset setup](#dataset-setup))
   - [OCR — Fast-Plate-OCR](#ocr--fast-plate-ocr)
   - [BentoML — Export individual models](#bentoml--export-individual-models)
   - [BentoML — Run individual services](#bentoml--run-individual-services)
@@ -58,7 +58,7 @@ The project is composed of three BentoML services:
 
 | Service | File | What it does | Runs on |
 |---|---|---|---|
-| `LicensePlateDetection` | [services/detection_service.py](services/detection_service.py) | Runs the fine-tuned YOLO26n detector and returns plate boxes (`xyxy` pixels) with confidences. | GPU when CUDA is available, otherwise CPU |
+| `LicensePlateDetection` | [services/detection_service.py](services/detection_service.py) | Runs the trained YOLO26n detector and returns plate boxes (`xyxy` pixels) with confidences. | GPU when CUDA is available, otherwise CPU |
 | `LicensePlateOCR` | [services/ocr_service.py](services/ocr_service.py) | Reads the text of one cropped plate with Fast-Plate-OCR, optionally with per-character confidences. | CPU (ONNX Runtime) |
 | `LicensePlatePipeline` | [services/pipeline_service.py](services/pipeline_service.py) | Calls the detector, clamps and crops every box, sends each crop to OCR, draws the results on the image, and returns everything as JSON. | Orchestration only |
 
@@ -311,6 +311,58 @@ nvidia-smi -l 1
 
 ## Detection — YOLO26n
 
+### Dataset setup
+
+Download the [Large-License-Plate-Detection-Dataset](https://www.kaggle.com/datasets/fareselmenshawii/large-license-plate-dataset) and arrange it in YOLO format under `datasets/detection/raw/`, the root configured in [configs/detection.yaml](configs/detection.yaml).
+
+Expected dataset layout:
+
+```text
+datasets/
+└── detection/
+    └── raw/
+        ├── images/
+        │   ├── train/
+        │   │   ├── 00009e5b390986a0.jpg
+        │   │   └── ...
+        │   ├── val/
+        │   │   └── ...
+        │   └── test/
+        │       └── ...
+        └── labels/
+            ├── train/
+            │   ├── 00009e5b390986a0.txt
+            │   └── ...
+            ├── val/
+            │   └── ...
+            └── test/
+                └── ...
+```
+
+Requirements:
+
+- `images/` and `labels/` each contain `train`, `val`, and `test` splits.
+- Every image has a label file with the **same filename stem** in the matching `labels/<split>/` folder.
+- Images can be `.jpg`, `.jpeg`, `.png`, `.bmp`, or `.webp`.
+- Label files use YOLO format: one plate per line, `class_id x_center y_center width height`. Coordinates are normalized to 0–1 relative to the image size, and the only class is `0` (`license_plate`). For example:
+
+  ```text
+  0 0.4805078125 0.8983397565982405 0.04124999999999995 0.030018999999999924
+  0 0.9905859375 0.7705236539589442 0.01375000000000004 0.018762000000000074
+  ```
+
+- An **empty** label file marks an image with no plates (a negative example).
+
+The split sizes used for the recorded results are:
+
+| Split | Images | Label files |
+|---|---:|---:|
+| `train` | 25,470 | 25,470 |
+| `val` | 1,073 | 1,073 |
+| `test` | 386 | 386 |
+
+Ultralytics creates `labels/train.cache`, `labels/val.cache`, and `labels/test.cache` the first time it reads each split; they can be deleted safely and are rebuilt automatically. Run the validation script below to confirm the layout before training.
+
 ### Dataset inspection and validation
 
 ```powershell
@@ -396,6 +448,8 @@ uv run --extra cu130 python src/ocr/predict.py --image "path\to\plate.png" --dev
 ```
 
 ### Evaluate the Brazilian OCR dataset
+
+Download the [Brazilian license plate OCR](https://www.kaggle.com/datasets/luisasr2/brazilian-license-plate-ocr) dataset and place it under `datasets/ocr/plates/`, the default dataset root used by `src/ocr/evaluate.py` (change it with `--root`, `--csv`, and `--image-dir`). The dataset is used only to test the pretrained OCR model, not to train it.
 
 Expected dataset layout:
 
