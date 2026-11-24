@@ -14,6 +14,7 @@ End-to-end license plate recognition served as an HTTP API. A custom-trained **Y
 - [Quick start](#quick-start)
 - [API](#api)
 - [Project structure](#project-structure)
+- [Limitations and future upgrades](#limitations-and-future-upgrades)
 - [Development guide](#development-guide)
   - [Environment](#environment)
   - [Detection — YOLO26n](#detection--yolo26n) ([dataset setup](#dataset-setup))
@@ -236,6 +237,32 @@ license-plate-recognition/
 ```
 
 Not tracked in Git: `datasets/` (download from the [Datasets](#datasets) links) and `runs/` (training, evaluation, and CLI outputs).
+
+---
+
+## Limitations and future upgrades
+
+### Current limitations
+
+- **Low-light and night images.** The detector misses many plates in dark images. Its training data is mostly daylight scenes. Preprocessing dark images with gamma brightening and CLAHE contrast enhancement before detection was tried and did not improve results, so it was not kept.
+- **Small, distant, or partially visible plates.** Plates only a few pixels tall, or cut off at the image border, are often detected with low confidence or not read correctly (see the *Unrecognized* example in [Examples](#examples)).
+- **OCR always returns text.** The OCR model outputs its best guess for every crop, even one too small or blurry to read. The pipeline does not yet reject low-confidence readings, so a returned `plate_text` is not proof that the plate was read correctly.
+- **OCR is pretrained, not fine-tuned.** `cct-s-v2-global-model` is used as-is. Its accuracy was measured only on 206 cropped Brazilian plates, so other regions and plate styles may perform differently.
+- **OCR runs on CPU only.** The OCR service uses CPU ONNX Runtime even in the CUDA build; only the detector uses the GPU.
+- **Windows-only lockfile.** `uv.lock` is resolved for Windows and Python 3.13. Linux use is through the Bento or Docker image.
+- **Hardcoded benchmark metadata.** The metrics stored with each registered BentoML model are written by hand in the registration scripts and must be updated manually after retraining or re-evaluation.
+- **No automated tests or CI.**
+- **Model archives are stored directly in Git.** The `.bentomodel` and `.bento` files are committed without Git LFS, so each re-export adds their full size to the repository history.
+
+### Future upgrades
+
+- **Fine-tune the detector for low light.** Add night and low-light images to the training set (labeled in the same [YOLO format](#dataset-setup)) and train with stronger brightness augmentation (Ultralytics `hsv_v`), then compare against the current baseline.
+- **Fine-tune the OCR model** on plates from the target region; Fast-Plate-OCR supports training and exporting custom models.
+- **Reject uncertain readings** by thresholding the per-character OCR confidences and returning an explicit "unreadable" status instead of a guess.
+- **GPU OCR** through ONNX Runtime's CUDA provider in the CUDA build.
+- **Read benchmark metadata from evaluation outputs** (`runs/detection/yolo26n_test/`, `runs/ocr/evaluation/`) instead of hardcoding it.
+- **Unit tests and CI** for the pure helpers (box clamping, edit distance, percentiles) and a smoke test of the pipeline API.
+- **Git LFS** for model and Bento archives.
 
 ---
 
