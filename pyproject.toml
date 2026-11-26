@@ -12,6 +12,7 @@ dependencies = [
     "fast-plate-ocr[onnx]>=1.1.0",
     "matplotlib>=3.11.2",
     "opencv-python>=5.0.0.93",
+    "optuna>=5.1.0",
     "pandas>=3.1.1",
     "pillow>=13.0.0",
     "pyyaml>=6.0.3",
